@@ -427,5 +427,51 @@ func RegisterTools(s *server.MCPServer, kafkaClient kafka.KafkaClient, cfg confi
 		return mcp.NewToolResultText(fmt.Sprintf("Topic '%s' was deleted successfully", topic)), nil // Use mcp.NewToolResultText
 	})
 
-	// TODO: Add admin tools (create_topic, delete_topic, etc.)
+	// --- reset_consumer_group_offsets tool ---
+	resetOffsetsTool := mcp.NewTool("reset_consumer_group_offsets",
+		mcp.WithDescription("Resets the committed offsets for a consumer group on a specific topic partition. The consumer group must have no active consumers (empty state). Use this tool for incident recovery, replaying messages, or skipping problematic messages. Use with caution as it affects message consumption."),
+		mcp.WithString("group_id", mcp.Required(), mcp.Description("The consumer group ID whose offsets will be reset.")),
+		mcp.WithString("topic", mcp.Required(), mcp.Description("The Kafka topic name to reset offsets for.")),
+		mcp.WithNumber("partition", mcp.Required(), mcp.Description("The partition number to reset the offset for.")),
+		mcp.WithNumber("offset", mcp.Required(), mcp.Description("The target offset to reset to. Use -1 for latest (end of partition), -2 for earliest (beginning of partition), or a specific offset number.")),
+	)
+
+	s.AddTool(resetOffsetsTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		groupID := req.GetString("group_id", "")
+		if groupID == "" {
+			return mcp.NewToolResultError("Missing required parameter: group_id"), nil
+		}
+		topic := req.GetString("topic", "")
+		if topic == "" {
+			return mcp.NewToolResultError("Missing required parameter: topic"), nil
+		}
+		partition := int32(req.GetFloat("partition", -1))
+		if partition < 0 {
+			return mcp.NewToolResultError("Missing or invalid required parameter: partition (must be >= 0)"), nil
+		}
+		offset := int64(req.GetFloat("offset", 0))
+
+		slog.InfoContext(ctx, "Executing reset_consumer_group_offsets tool", "group", groupID, "topic", topic, "partition", partition, "offset", offset)
+
+		err := kafkaClient.ResetConsumerGroupOffsets(ctx, groupID, topic, partition, offset)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to reset consumer group offsets", "group", groupID, "topic", topic, "partition", partition, "error", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to reset offsets for group '%s' on topic '%s' partition %d: %v", groupID, topic, partition, err)), nil
+		}
+
+		slog.InfoContext(ctx, "Successfully reset consumer group offsets", "group", groupID, "topic", topic, "partition", partition, "offset", offset)
+
+		result := map[string]interface{}{
+			"group_id":  groupID,
+			"topic":     topic,
+			"partition": partition,
+			"new_offset": offset,
+			"status":    "success",
+		}
+		jsonData, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			return mcp.NewToolResultError("Internal server error: failed to marshal results"), nil
+		}
+		return mcp.NewToolResultText(string(jsonData)), nil
+	})
 }

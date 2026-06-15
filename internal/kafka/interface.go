@@ -46,6 +46,10 @@ type KafkaClient interface {
 	// DeleteTopic deletes an existing topic in the Kafka cluster.
 	DeleteTopic(ctx context.Context, topic string) error
 
+	// ResetConsumerGroupOffsets resets the committed offsets for a consumer group on a specific topic.
+	// The group must have no active consumers. Offset can be a specific value, -1 for latest, or -2 for earliest.
+	ResetConsumerGroupOffsets(ctx context.Context, groupID string, topic string, partition int32, offset int64) error
+
 	// Close gracefully shuts down the Kafka client.
 	Close()
 }
