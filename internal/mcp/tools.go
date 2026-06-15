@@ -370,5 +370,62 @@ func RegisterTools(s *server.MCPServer, kafkaClient kafka.KafkaClient, cfg confi
 		return mcp.NewToolResultText(string(jsonData)), nil
 	})
 
+	// --- creates a topic in the kafka clsuter ---
+	createTopicTool := mcp.NewTool("create_topic",
+		mcp.WithDescription("Creates a Kafka topic. Use this tool when you need to create a topic in your kafka cluster."),
+		mcp.WithString("topic", mcp.Required(), mcp.Description("The name of the Kafka topic you wish to create. Cannot be an existing topic.")),
+		mcp.WithNumber("partitions", mcp.Required(), mcp.Description("Number of partitions (default: 1)")),
+		mcp.WithNumber("replication_factor", mcp.Description("Replication factor (default: 1). Cannot exceed the number of brokers.")),
+	)
+
+	s.AddTool(createTopicTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) { // Use mcp.CallToolRequest, mcp.CallToolResult
+		topic := req.GetString("topic", "")
+		
+		if topic == "" {
+			return mcp.NewToolResultError("Missing required parameter: topic (string)"), nil
+		}
+
+		partitions := int32(req.GetFloat("partitions", 1))
+      	replicationFactor := int16(req.GetFloat("replication_factor", 1))
+
+		// Do not log raw keys; just indicate presence to avoid accidental PII leakage.
+		slog.InfoContext(ctx, "Executing create_topic tool", "topic", topic, "partitions", partitions, "replicationFactor", replicationFactor)
+
+		err := kafkaClient.CreateTopic(ctx, topic, partitions, replicationFactor)
+
+		if err != nil{
+			slog.ErrorContext(ctx, "Failed to create topic", "topic", topic, "error", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to create topic '%s': %v", topic, err)), nil
+		}
+		slog.InfoContext(ctx, "Topic created successfully", "topic", topic)
+		return mcp.NewToolResultText(fmt.Sprintf("Topic '%s' was created successfully with %d partitions and replicaiton factor %d", topic, partitions, replicationFactor)), nil // Use mcp.NewToolResultText
+	})
+
+	// --- deletes a topic in the kafka clsuter ---
+	deleteTopicTool := mcp.NewTool("delete_topic",
+		mcp.WithDescription("Deletes a Kafka topic. Use this tool when you need to delete a topic in your kafka cluster."),
+		mcp.WithString("topic", mcp.Required(), mcp.Description("The name of the Kafka topic you wish to delete. Must be an existing topic.")),
+	)
+
+	s.AddTool(deleteTopicTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) { // Use mcp.CallToolRequest, mcp.CallToolResult
+		topic := req.GetString("topic", "")
+		
+		if topic == "" {
+			return mcp.NewToolResultError("Missing required parameter: topic (string)"), nil
+		}
+
+		// Do not log raw keys; just indicate presence to avoid accidental PII leakage.
+		slog.InfoContext(ctx, "Executing delete_topic tool", "topic", topic)
+
+		err := kafkaClient.DeleteTopic(ctx, topic)
+
+		if err != nil{
+			slog.ErrorContext(ctx, "Failed to delete topic", "topic", topic, "error", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to delete topic '%s': %v", topic, err)), nil
+		}
+		slog.InfoContext(ctx, "Topic deleted successfully", "topic", topic)
+		return mcp.NewToolResultText(fmt.Sprintf("Topic '%s' was deleted successfully", topic)), nil // Use mcp.NewToolResultText
+	})
+
 	// TODO: Add admin tools (create_topic, delete_topic, etc.)
 }

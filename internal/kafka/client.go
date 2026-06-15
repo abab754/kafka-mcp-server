@@ -1003,3 +1003,53 @@ func (c *Client) Close() {
 func (c *Client) StringToResourceType(resourceTypeStr string) (ConfigResourceType, error) {
 	return StringToResourceType(resourceTypeStr)
 }
+
+
+func (c *Client) CreateTopic(ctx context.Context, topic string, partitions int32, replicationFactor int16) error {
+	req := kmsg.NewCreateTopicsRequest()
+	topicReq := kmsg.NewCreateTopicsRequestTopic()
+	topicReq.Topic = topic
+	topicReq.NumPartitions = partitions
+	topicReq.ReplicationFactor = replicationFactor
+
+	req.Topics = append(req.Topics, topicReq)
+
+	resp, err := c.kgoClient.Request(ctx, &req)
+	if err != nil {
+		return fmt.Errorf("CreateTopics request failed: %w", err)
+	}
+	createResp, ok := resp.(*kmsg.CreateTopicsResponse)
+	if !ok{
+		return fmt.Errorf("unexpected response type for CreateTopics request")
+	}
+	for _, topic := range createResp.Topics {
+		if topic.ErrorCode != 0 {
+			errMsg := kerr.ErrorForCode(topic.ErrorCode)
+			return fmt.Errorf("failed to create topic '%s': %w", topic.Topic, errMsg)
+		}
+	}
+	return nil
+}
+
+func (c *Client) DeleteTopic(ctx context.Context, topic string) error {
+	req := kmsg.NewDeleteTopicsRequest()
+	topicReq := kmsg.NewDeleteTopicsRequestTopic()
+	topicReq.Topic = kmsg.StringPtr(topic)
+
+	req.Topics = append(req.Topics,topicReq)
+	resp, err := c.kgoClient.Request(ctx, &req)
+	if err != nil {
+		return fmt.Errorf("DeleteTopic request failed: %w", err)
+	}
+	deleteResp, ok := resp.(*kmsg.DeleteTopicsResponse)
+	if !ok{
+		return fmt.Errorf("unexpected response type for DeleteTopics request")
+	}
+	for _, topic := range deleteResp.Topics {
+		if topic.ErrorCode != 0 {
+			errMsg := kerr.ErrorForCode(topic.ErrorCode)
+			return fmt.Errorf("failed to delete topic '%s': %w", *topic.Topic, errMsg)
+		}
+	}
+	return nil
+}

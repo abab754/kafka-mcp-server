@@ -40,6 +40,12 @@ type KafkaClient interface {
 	// StringToResourceType converts a string resource type to its corresponding ConfigResourceType
 	StringToResourceType(resourceTypeStr string) (ConfigResourceType, error)
 
+	// CreateTopic creates a new topic in the Kafka cluster.
+	CreateTopic(ctx context.Context, topic string, partitions int32, replicationFactor int16) error
+
+	// DeleteTopic deletes an existing topic in the Kafka cluster.
+	DeleteTopic(ctx context.Context, topic string) error
+
 	// Close gracefully shuts down the Kafka client.
 	Close()
 }
